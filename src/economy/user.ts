@@ -3,7 +3,6 @@
  */
 
 import { prisma } from '../database.js';
-import { setCooldown } from '../redis.js';
 
 const DAILY_REWARDS = [200, 250, 300, 400, 500, 700, 1000];
 const DAILY_GEMS_DAY = 6; // gems on day 7
@@ -74,9 +73,6 @@ export async function claimDaily(
       },
     }),
   ]);
-
-  // 4-hour cooldown
-  await setCooldown(userId, 'daily', 0); // the 24h check is handled above
 
   return { coins, gems, streak, isJackpot };
 }
