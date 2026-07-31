@@ -13,7 +13,8 @@ import { logger } from '../logger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export async function loadCommands(client: NexusClient): Promise<void> {
-  const commandsDir = join(__dirname, 'commands');
+  // __dirname = dist/handlers/ → go up one level to dist/ then into commands/
+  const commandsDir = join(__dirname, '..', 'commands');
   let count = 0;
 
   const categories = readdirSync(commandsDir);
