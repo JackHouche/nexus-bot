@@ -27,7 +27,7 @@ export async function loadCommands(client: NexusClient): Promise<void> {
       continue;
     }
 
-    const files = readdirSync(categoryPath).filter((f) => f.endsWith('.ts') || f.endsWith('.js'));
+    const files = readdirSync(categoryPath).filter((f) => f.endsWith('.js'));
     for (const file of files) {
       const filePath = pathToFileURL(join(categoryPath, file)).href;
       const mod = await import(filePath);
