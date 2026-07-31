@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// === PLAYER ===
+model User {
+  id                  String   @id // Discord user ID
+  username            String
+  level               Int      @default(1)
+  xp                  Int      @default(0)
+  coins               BigInt   @default(1000)
+  gems                Int      @default(0)
+  souls               Int      @default(0)
+  dailyStreak         Int      @default(0)
+  lastDaily           DateTime?
+  deepestFloor        Int      @default(0)
+  totalRuns           Int      @default(0)
+  totalKills          Int      @default(0)
+  totalBossKills      Int      @default(0)
+  unlockedClasses     String[] @default(["warrior", "mage", "gambler", "rogue"])
+  unlockedPerks       String[] @default([])
+  discoveredSynergies String[] @default([])
+  achievements        Json     @default("{}")
+  cosmetics           Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  runs         Run[]
+  duelsAsChallenger Duel[] @relation("challenger")
+  duelsAsOpponent   Duel[] @relation("opponent")
+  inventory    Inventory[]
+  transactions Transaction[]
+
+  @@map("users")
+}
+
+// === RUN (active or historical) ===
+model Run {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  seed          Int
+  className     String
+  currentFloor  Int       @default(0)
+  hp            Int       @default(100)
+  maxHp         Int       @default(100)
+  atk           Int       @default(15)
+  def           Int       @default(5)
+  energy        Int       @default(3)
+  maxEnergy     Int       @default(3)
+  perks         Json      @default("[]") // [{id, name, category, effects}]
+  synergies     Json      @default("[]")
+  pactAmount    BigInt    @default(0)
+  coinsInRun    Int       @default(0)
+  status        RunStatus @default(ACTIVE)
+  isHardcore    Boolean   @default(false)
+  isDailySeed   Boolean   @default(false)
+  floorHistory  Json      @default("[]")
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@map("runs")
+}
+
+enum RunStatus {
+  ACTIVE
+  COMPLETED_QUIT
+  COMPLETED_DEAD
+  ABANDONED
+}
+
+// === INVENTORY ===
+model Inventory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  itemId     String
+  quantity   Int      @default(1)
+  acquiredAt DateTime @default(now())
+
+  @@unique([userId, itemId])
+  @@map("inventory")
+}
+
+// === DUELS ===
+model Duel {
+  id           String    @id @default(uuid())
+  challengerId String
+  opponentId   String
+  challenger   User      @relation("challenger", fields: [challengerId], references: [id])
+  opponent     User      @relation("opponent", fields: [opponentId], references: [id])
+  wager        BigInt
+  winnerId     String?
+  status       String    @default("pending") // pending, accepted, completed, declined
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+
+  @@map("duels")
+}
+
+// === ECONOMY AUDIT LOG ===
+model Transaction {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   // daily, run_win, run_loss, duel, shop, admin, achievement
+  amount    BigInt   // positive = gain, negative = loss
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// === GUILD CONFIG ===
+model Guild {
+  id              String   @id // Discord guild ID
+  prefix          String   @default("/")
+  language        String   @default("fr")
+  enabledChannels String[] @default([])
+  bonusMultiplier Float    @default(1.0)
+  createdAt       DateTime @default(now())
+
+  @@map("guilds")
+}
