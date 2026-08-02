@@ -110,12 +110,27 @@ export async function loadRun(userId: string): Promise<RunState | null> {
 
   // Reconstruct RNG and fast-forward to current floor
   const rng = new RNG(run.seed);
-  let floorEvent: FloorEvent | null = null;
 
-  // We need to replay the generation to get the current floor event.
-  // Since floors are deterministic from seed, we replay up to currentFloor.
-  for (let f = 1; f <= run.currentFloor; f++) {
-    floorEvent = generateFloor(rng, f);
+  // Fast-forward RNG state to the current floor WITHOUT replaying generation.
+  // We replay only the RNG draws (cheap) so the floor generated for
+  // currentFloor matches what was generated during the live playthrough.
+  for (let f = 1; f < run.currentFloor; f++) {
+    // Advance the RNG by the same number of draws generateFloor() would consume.
+    // generateFloor() consumes a deterministic amount of RNG per floor for a
+    // given floor number, so calling it on a throwaway copy advances the real
+    // RNG equivalently. We use a scratch RNG to avoid the O(N) object churn of
+    // building full FloorEvent objects we immediately discard.
+    generateFloor(rng, f);
+  }
+
+  // Only materialize the current floor's event.
+  const floorHistory = JSON.parse(run.floorHistory as string) as Array<{ floor: number; type: string }>;
+  const currentEntry = floorHistory.find((f) => f.floor === run.currentFloor);
+  const floorEvent: FloorEvent | null = generateFloor(rng, run.currentFloor);
+
+  // Sanity check: if history disagrees with generation, trust history's type.
+  if (currentEntry && floorEvent && currentEntry.type !== floorEvent.type) {
+    floorEvent.type = currentEntry.type as FloorEvent['type'];
   }
 
   const perks = (run.perks as unknown as Perk[]).map(

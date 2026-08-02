@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { NexusClient } from './client.js';
 import { logger } from './logger.js';
 import { loadCommands } from './handlers/commandHandler.js';
+import { checkCooldown } from './handlers/cooldown.js';
 import { handleNexusButton, handlePuzzleTextAnswer } from './handlers/buttonHandler.js';
 import { prisma } from './database.js';
 import { redis } from './redis.js';
@@ -23,6 +24,35 @@ async function main() {
 
   const client = new NexusClient();
   await loadCommands(client);
+
+  // === GLOBAL ERROR HANDLERS (infaillibilité) ===
+  // WebSocket / shard errors
+  client.on(Events.ShardError, (err) => {
+    logger.error({ err: err.message, stack: err.stack }, 'WebSocket shard error');
+  });
+
+  // General client errors
+  client.on(Events.Error, (err) => {
+    logger.error({ err: err.message, stack: err.stack }, 'Client error');
+  });
+
+  // REST rate limit warnings
+  client.rest.on('rateLimited' as never, ((info: { route: string; timeToReset: number }) => {
+    logger.warn({ route: info.route, timeToReset: info.timeToReset }, 'Discord REST rate limited');
+  }) as never);
+
+  // Unhandled promise rejections — log but DON'T crash
+  process.on('unhandledRejection', (reason: unknown) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    logger.error({ reason: msg, stack }, 'Unhandled promise rejection — bot staying alive');
+  });
+
+  // Uncaught exceptions — log but DON'T crash (the bot stays alive)
+  process.on('uncaughtException', (err: Error) => {
+    logger.error({ err: err.message, stack: err.stack }, 'Uncaught exception — bot staying alive');
+  });
+
 
   // Register slash commands
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
@@ -58,6 +88,15 @@ async function main() {
     }
 
     try {
+      // Cooldown check (Redis-backed)
+      const cooldown = await checkCooldown(interaction);
+      if (!cooldown.allowed) {
+        return interaction.reply({
+          content: `⏳ Patiente **${cooldown.remaining}s** avant de réutiliser cette commande.`,
+          ephemeral: true,
+        });
+      }
+
       await command.execute(interaction);
     } catch (err) {
       logger.error({ command: interaction.commandName, err: (err as Error).message }, 'Command execution error');

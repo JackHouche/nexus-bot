@@ -11,6 +11,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ActionRowBuilder,
+  DiscordAPIError,
 } from 'discord.js';
 import { prisma } from '../database.js';
 import { logger } from '../logger.js';
@@ -536,6 +537,14 @@ export async function handleNexusButton(interaction: ButtonInteraction) {
     logger.warn({ customId }, 'Unknown button interaction');
     return interaction.reply({ content: '❌ Interaction inconnue.', ephemeral: true });
   } catch (err) {
+    // DiscordAPIError code 10062 = "Unknown interaction" — the interaction
+    // token expired (user waited too long, ~15 min). Nothing we can do; skip
+    // the noisy reply attempt which would itself fail.
+    if (err instanceof DiscordAPIError && err.code === 10062) {
+      logger.warn({ customId }, 'Interaction expired (10062) — skipping reply');
+      return;
+    }
+
     logger.error({ customId, err: (err as Error).message }, 'Button handler error');
     if (interaction.replied || interaction.deferred) {
       return interaction.followUp({ content: `❌ ${(err as Error).message}`, ephemeral: true });

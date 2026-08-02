@@ -1,4 +1,4 @@
-import { Client, Collection, GatewayIntentBits } from 'discord.js';
+import { Client, Collection, GatewayIntentBits, Partials } from 'discord.js';
 import type { SlashCommand } from './types.js';
 
 export class NexusClient extends Client {
@@ -12,6 +12,7 @@ export class NexusClient extends Client {
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent,
       ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     });
   }
 }
