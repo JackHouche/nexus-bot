@@ -271,6 +271,7 @@ model Season {
 
 model SeasonProgress {
   userId      String
+  user        User     @relation(fields: [userId], references: [id])
   seasonId    Int
   season      Season   @relation(fields: [seasonId], references: [id])
   xp          Int      @default(0)
