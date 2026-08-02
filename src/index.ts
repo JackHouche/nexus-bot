@@ -54,22 +54,39 @@ async function main() {
   });
 
 
-  // Register slash commands
+  // Register slash commands — resilient: try guild first, fallback to global, never crash
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
   const commandsData = Array.from(client.commands.values()).map((cmd) => cmd.data.toJSON());
 
   if (config.discord.guildId) {
-    await rest.put(
-      Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId),
-      { body: commandsData }
-    );
-    logger.info({ guild: config.discord.guildId, count: commandsData.length }, 'Guild slash commands registered');
+    try {
+      await rest.put(
+        Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId),
+        { body: commandsData }
+      );
+      logger.info({ guild: config.discord.guildId, count: commandsData.length }, 'Guild slash commands registered');
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, guild: config.discord.guildId }, 'Guild command registration failed — falling back to global');
+      try {
+        await rest.put(
+          Routes.applicationCommands(config.discord.clientId),
+          { body: commandsData }
+        );
+        logger.info({ count: commandsData.length }, 'Global slash commands registered (fallback)');
+      } catch (err2) {
+        logger.error({ err: (err2 as Error).message }, 'Global command registration also failed — continuing anyway');
+      }
+    }
   } else {
-    await rest.put(
-      Routes.applicationCommands(config.discord.clientId),
-      { body: commandsData }
-    );
-    logger.info({ count: commandsData.length }, 'Global slash commands registered');
+    try {
+      await rest.put(
+        Routes.applicationCommands(config.discord.clientId),
+        { body: commandsData }
+      );
+      logger.info({ count: commandsData.length }, 'Global slash commands registered');
+    } catch (err) {
+      logger.error({ err: (err as Error).message }, 'Global command registration failed — continuing anyway');
+    }
   }
 
   // === EVENT: READY ===
