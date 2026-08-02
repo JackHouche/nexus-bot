@@ -83,7 +83,7 @@ export async function createSeason(themeId: string): Promise<number> {
       startsAt: now,
       endsAt,
       active: true,
-      battlePass: generateBattlePass(),
+      battlePass: generateBattlePass() as unknown as object,
     },
   });
 

@@ -253,7 +253,7 @@ export async function buyListing(
       prisma.gear.update({
         where: { id: listing.gearId },
         data: { ownerId: buyerId, equipped: false },
-      })
+      }) as unknown as typeof tx[number]
     );
   }
 
