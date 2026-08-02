@@ -270,8 +270,12 @@ export default {
   data: new SlashCommandBuilder()
     .setName('setup')
     .setDescription('⚡ Configure VOLT : channels, rôles, message d\'accueil (Admin seulement)')
-    .addBooleanOption((opt) =>
-      opt.setName('forcer').setDescription('Recréer tous les channels même s\'ils existent (défaut: non)').setRequired(false)
+    .addStringOption((opt) =>
+      opt.setName('mode').setDescription('Mode de configuration').setRequired(false)
+        .addChoices(
+          { name: '🆕 Créer (ignore ce qui existe)', value: 'create' },
+          { name: '🧹 Nettoyer (supprime TOUT et recrée)', value: 'clean' },
+        )
     ) as SlashCommandBuilder,
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -287,7 +291,8 @@ export default {
       return interaction.reply({ content: '❌ Cette commande doit être utilisée dans un serveur.', ephemeral: true });
     }
 
-    const force = interaction.options.getBoolean('forcer') ?? false;
+    const mode = interaction.options.getString('mode') ?? 'create';
+    const force = mode === 'clean';
 
     await interaction.deferReply({ ephemeral: true });
 
@@ -295,6 +300,31 @@ export default {
     let channelCount = 0;
     let roleCount = 0;
     let categoryCount = 0;
+
+    // === STEP 0: CLEAN MODE — nuke everything first ===
+    if (force) {
+      log.push('🧹 Nettoyage en cours...');
+
+      // Delete ALL channels (text, voice, category)
+      const allChannels = guild.channels.cache;
+      for (const [, channel] of allChannels) {
+        try {
+          await channel.delete('VOLT Clean Setup');
+        } catch { /* ignore individual errors */ }
+      }
+      log.push('🧹 Tous les channels supprimés');
+
+      // Delete custom roles (keep @everyone and managed roles like Booster)
+      const customRoles = guild.roles.cache.filter(
+        (r) => !r.managed && r.id !== guild.roles.everyone.id
+      );
+      for (const [, role] of customRoles) {
+        try {
+          await role.delete('VOLT Clean Setup');
+        } catch { /* ignore */ }
+      }
+      log.push('🧹 Rôles personnalisés supprimés');
+    }
 
     // === STEP 1: ROLES ===
     for (const roleDef of ROLES) {
