@@ -7,7 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// === PLAYER ===
+// ============================================================
+//  PLAYER
+// ============================================================
 model User {
   id                  String   @id // Discord user ID
   username            String
@@ -18,34 +20,54 @@ model User {
   souls               Int      @default(0)
   dailyStreak         Int      @default(0)
   lastDaily           DateTime?
+  lastOnlineAt        DateTime?
   deepestFloor        Int      @default(0)
   totalRuns           Int      @default(0)
   totalKills          Int      @default(0)
   totalBossKills      Int      @default(0)
+  totalGamblesWon     Int      @default(0)
+  totalDuelsWon       Int      @default(0)
+  totalDuelsLost      Int      @default(0)
+  elo                 Int      @default(1000)
   unlockedClasses     String[] @default(["warrior", "mage", "gambler", "rogue"])
   unlockedPerks       String[] @default([])
   discoveredSynergies String[] @default([])
+  discoveredPerkVariants String[] @default([])
   achievements        Json     @default("{}")
   cosmetics           Json     @default("{}")
+  title               String?
+  banner              String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  runs         Run[]
-  duelsAsChallenger Duel[] @relation("challenger")
-  duelsAsOpponent   Duel[] @relation("opponent")
-  inventory    Inventory[]
-  transactions Transaction[]
+  runs              Run[]
+  duelsAsChallenger Duel[]    @relation("challenger")
+  duelsAsOpponent   Duel[]    @relation("opponent")
+  inventory         Inventory[]
+  transactions      Transaction[]
+  classMasteries    ClassMastery[]
+  talents           UserTalent[]
+  gear              Gear[]
+  prestiges         Prestige?
+  seasonProgress    SeasonProgress[]
+  corpses           Corpse[]
+  ghostMessages     GhostMessage[]
+  marketListings    MarketListing[]
+  raidContributions RaidContribution[]
 
   @@map("users")
 }
 
-// === RUN (active or historical) ===
+// ============================================================
+//  RUN (active or historical)
+// ============================================================
 model Run {
   id            String    @id @default(uuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id])
   seed          Int
   className     String
+  ascendance    String?
   currentFloor  Int       @default(0)
   hp            Int       @default(100)
   maxHp         Int       @default(100)
@@ -53,19 +75,24 @@ model Run {
   def           Int       @default(5)
   energy        Int       @default(3)
   maxEnergy     Int       @default(3)
-  perks         Json      @default("[]") // [{id, name, category, effects}]
+  perks         Json      @default("[]") // [{id, name, variant, modifier, ...}]
   synergies     Json      @default("[]")
   pactAmount    BigInt    @default(0)
   coinsInRun    Int       @default(0)
+  biome         String?
   status        RunStatus @default(ACTIVE)
+  mode          String    @default("normal") // normal, hardcore, daily, custom, endless
   isHardcore    Boolean   @default(false)
   isDailySeed   Boolean   @default(false)
+  noDamageFloors Int      @default(0)
   floorHistory  Json      @default("[]")
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
+  duration      Int?
 
   @@index([userId])
   @@index([status])
+  @@index([seed])
   @@map("runs")
 }
 
@@ -76,7 +103,9 @@ enum RunStatus {
   ABANDONED
 }
 
-// === INVENTORY ===
+// ============================================================
+//  INVENTORY
+// ============================================================
 model Inventory {
   id         String   @id @default(uuid())
   userId     String
@@ -89,7 +118,9 @@ model Inventory {
   @@map("inventory")
 }
 
-// === DUELS ===
+// ============================================================
+//  DUELS
+// ============================================================
 model Duel {
   id           String    @id @default(uuid())
   challengerId String
@@ -99,18 +130,22 @@ model Duel {
   wager        BigInt
   winnerId     String?
   status       String    @default("pending") // pending, accepted, completed, declined
+  log          Json      @default("[]")
+  eloChange    Int       @default(0)
   createdAt    DateTime  @default(now())
   resolvedAt   DateTime?
 
   @@map("duels")
 }
 
-// === ECONOMY AUDIT LOG ===
+// ============================================================
+//  ECONOMY AUDIT LOG
+// ============================================================
 model Transaction {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  type      String   // daily, run_win, run_loss, duel, shop, admin, achievement
+  type      String   // daily, run_win, run_loss, duel, shop, admin, achievement, market, repair, prestige
   amount    BigInt   // positive = gain, negative = loss
   meta      Json     @default("{}")
   createdAt DateTime @default(now())
@@ -120,7 +155,9 @@ model Transaction {
   @@map("transactions")
 }
 
-// === GUILD CONFIG ===
+// ============================================================
+//  GUILD CONFIG
+// ============================================================
 model Guild {
   id              String   @id // Discord guild ID
   prefix          String   @default("/")
@@ -130,4 +167,234 @@ model Guild {
   createdAt       DateTime @default(now())
 
   @@map("guilds")
+}
+
+// ============================================================
+//  CLASS MASTERY
+// ============================================================
+model ClassMastery {
+  userId        String
+  classId       String
+  level         Int       @default(0)
+  xp            Int       @default(0)
+  ascendance    String?   // chosen at Lv 10: champion, berzerker, bastion, etc.
+  transcendence String?   // chosen at Lv 20: colosse, fureur, forteresse, etc.
+  updatedAt     DateTime  @updatedAt
+
+  user          User @relation(fields: [userId], references: [id])
+
+  @@id([userId, classId])
+  @@map("class_mastery")
+}
+
+// ============================================================
+//  TALENT TREE
+// ============================================================
+model UserTalent {
+  userId      String
+  nodeId      String   // e.g. "combat_atk_1", "economy_daily_1"
+  investedAt  DateTime @default(now())
+
+  user        User @relation(fields: [userId], references: [id])
+
+  @@id([userId, nodeId])
+  @@map("user_talents")
+}
+
+// ============================================================
+//  GEAR / EQUIPMENT
+// ============================================================
+model Gear {
+  id            String   @id @default(uuid())
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id])
+  slot          String   // weapon, armor, ring, amulet, boots
+  itemId        String
+  name          String
+  emoji         String
+  rarity        String   // common, rare, epic, legendary, mythic
+  stats         Json     @default("{}") // {atk: 5, hp: 20, crit: 3, ...}
+  setId         String?
+  durability    Int      @default(100)
+  maxDurability Int      @default(100)
+  equipped      Boolean  @default(false)
+  acquiredAt    DateTime @default(now())
+
+  @@index([ownerId])
+  @@map("gear")
+}
+
+// ============================================================
+//  PRESTIGE
+// ============================================================
+model Prestige {
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id])
+  level           Int      @default(0)
+  totalXp         BigInt   @default(0)
+  bonusXp         Float    @default(0.0)
+  bonusCoins      Float    @default(0.0)
+  lastPrestigeAt  DateTime?
+
+  @@map("prestige")
+}
+
+// ============================================================
+//  ACHIEVEMENTS
+// ============================================================
+model UserAchievement {
+  userId         String
+  achievementId  String
+  unlockedAt     DateTime @default(now())
+
+  @@id([userId, achievementId])
+  @@map("user_achievements")
+}
+
+// ============================================================
+//  SEASONS & BATTLE PASS
+// ============================================================
+model Season {
+  id          Int      @id @default(autoincrement())
+  name        String
+  theme       String
+  startsAt    DateTime
+  endsAt      DateTime
+  battlePass  Json     @default("{}")
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  progress    SeasonProgress[]
+
+  @@map("seasons")
+}
+
+model SeasonProgress {
+  userId      String
+  seasonId    Int
+  season      Season   @relation(fields: [seasonId], references: [id])
+  xp          Int      @default(0)
+  level       Int      @default(0)
+  premium     Boolean  @default(false)
+  claimedRewards String[] @default([])
+
+  @@id([userId, seasonId])
+  @@map("season_progress")
+}
+
+// ============================================================
+//  SOCIAL: CORPSES, GHOST MESSAGES
+// ============================================================
+model Corpse {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  seed        Int
+  floor       Int
+  buildJson   Json     // {class, perks, ascendance}
+  coins       BigInt
+  items       Json     @default("[]")
+  found       Boolean  @default(false)
+  foundBy     String?
+  action      String?  // looted, respected, profaned
+  foundAt     DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([seed, floor])
+  @@map("corpses")
+}
+
+model GhostMessage {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  seed        Int
+  floor       Int
+  message     String
+  upvotes     Int      @default(0)
+  downvotes   Int      @default(0)
+  voters      String[] @default([])
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([seed, floor])
+  @@map("ghost_messages")
+}
+
+// ============================================================
+//  MARKETPLACE
+// ============================================================
+model MarketListing {
+  id          String   @id @default(uuid())
+  sellerId    String
+  seller      User     @relation(fields: [sellerId], references: [id])
+  gearId      String?
+  itemId      String?
+  name        String
+  emoji       String
+  rarity      String
+  price       BigInt
+  sold        Boolean  @default(false)
+  buyerId     String?
+  soldAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([sellerId])
+  @@map("market_listings")
+}
+
+// ============================================================
+//  RAIDS (Global Boss)
+// ============================================================
+model RaidBoss {
+  id          String   @id @default(uuid())
+  name        String
+  emoji       String
+  hp          BigInt
+  maxHp       BigInt
+  expiresAt   DateTime
+  defeated    Boolean  @default(false)
+  contributors RaidContribution[]
+  createdAt   DateTime @default(now())
+
+  @@map("raid_bosses")
+}
+
+model RaidContribution {
+  raidId      String
+  userId      String
+  raid        RaidBoss @relation(fields: [raidId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+  damage      BigInt   @default(0)
+  runsDone    Int      @default(0)
+
+  @@id([raidId, userId])
+  @@map("raid_contributions")
+}
+
+// ============================================================
+//  DAILY SEED
+// ============================================================
+model DailySeed {
+  date        DateTime @id
+  seed        Int
+  leaderboard Json     @default("{}") // {userId: {bestFloor, className, deaths}}
+  createdAt   DateTime @default(now())
+
+  @@map("daily_seeds")
+}
+
+// ============================================================
+//  GAME EVENTS
+// ============================================================
+model GameEvent {
+  id          String   @id @default(uuid())
+  type        String   // double_pacte, blood_moon, golden_shop, fog, invasion
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean  @default(true)
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@map("game_events")
 }
